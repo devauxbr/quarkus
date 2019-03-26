@@ -1,10 +1,15 @@
 package io.quarkus.runtime.logging;
 
+import static java.util.Optional.empty;
+import static java.util.Optional.of;
+import static java.util.stream.Collectors.toList;
+
 import java.io.FileNotFoundException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Optional;
 import java.util.logging.ErrorManager;
 import java.util.logging.Handler;
 import java.util.logging.Level;
@@ -19,6 +24,7 @@ import org.jboss.logmanager.formatters.PatternFormatter;
 import org.jboss.logmanager.handlers.ConsoleHandler;
 import org.jboss.logmanager.handlers.FileHandler;
 
+import io.quarkus.runtime.RuntimeValue;
 import io.quarkus.runtime.annotations.Template;
 
 /**
@@ -26,10 +32,7 @@ import io.quarkus.runtime.annotations.Template;
  */
 @Template
 public class LoggingSetupTemplate {
-    public LoggingSetupTemplate() {
-    }
-
-    public void initializeLogging(LogConfig config) {
+    public RuntimeValue<HandlerContext> initializeLogContext(LogConfig config) {
         final Map<String, CategoryConfig> categories = config.categories;
         final LogContext logContext = LogContext.getLogContext();
         final Logger rootLogger = logContext.getLogger("");
@@ -48,7 +51,13 @@ public class LoggingSetupTemplate {
         for (Entry<String, CleanupFilterConfig> entry : filters.entrySet()) {
             filterElements.add(new LogCleanupFilterElement(entry.getKey(), entry.getValue().ifStartsWith));
         }
-        ArrayList<Handler> handlers = new ArrayList<>(2);
+        return new RuntimeValue<>(new HandlerContext(filterElements, errorManager));
+    }
+
+    public RuntimeValue<Optional<Handler>> initializeConsoleHandler(
+            LogConfig config, RuntimeValue<HandlerContext> handlerContextValue) {
+        HandlerContext context = handlerContextValue.getValue();
+
         if (config.console.enable) {
             final PatternFormatter formatter;
             if (config.console.color && System.console() != null) {
@@ -58,11 +67,18 @@ public class LoggingSetupTemplate {
             }
             final ConsoleHandler handler = new ConsoleHandler(formatter);
             handler.setLevel(config.console.level);
-            handler.setErrorManager(errorManager);
-            handler.setFilter(new LogCleanupFilter(filterElements));
-            handlers.add(handler);
-            errorManager = handler.getLocalErrorManager();
+            handler.setErrorManager(context.getErrorManager());
+            handler.setFilter(new LogCleanupFilter(context.getFilterElements()));
+            return new RuntimeValue<>(of(handler));
         }
+
+        return new RuntimeValue<>(empty());
+    }
+
+    public RuntimeValue<Optional<Handler>> initializeFileHandler(
+            LogConfig config, RuntimeValue<HandlerContext> handlerContextValue) {
+        HandlerContext context = handlerContextValue.getValue();
+
         if (config.file.enable) {
             final PatternFormatter formatter = new PatternFormatter(config.file.format);
             final FileHandler handler = new FileHandler(formatter);
@@ -70,13 +86,23 @@ public class LoggingSetupTemplate {
             try {
                 handler.setFile(config.file.path);
             } catch (FileNotFoundException e) {
-                errorManager.error("Failed to set log file", e, ErrorManager.OPEN_FAILURE);
+                context.getErrorManager().error("Failed to set log file", e, ErrorManager.OPEN_FAILURE);
             }
-            handler.setErrorManager(errorManager);
+            handler.setErrorManager(context.getErrorManager());
             handler.setLevel(config.file.level);
-            handler.setFilter(new LogCleanupFilter(filterElements));
-            handlers.add(handler);
+            handler.setFilter(new LogCleanupFilter(context.getFilterElements()));
+            return new RuntimeValue<>(of(handler));
         }
+
+        return new RuntimeValue<>(empty());
+    }
+
+    public void registerLoggingHandlers(List<RuntimeValue<Optional<Handler>>> runtimeHandlers) {
+        List<Handler> handlers = runtimeHandlers.stream()
+                .map(RuntimeValue::getValue)
+                .filter(Optional::isPresent)
+                .map(Optional::get)
+                .collect(toList());
         InitialConfigurator.DELAYED_HANDLER.setHandlers(handlers.toArray(EmbeddedConfigurator.NO_HANDLERS));
     }
 

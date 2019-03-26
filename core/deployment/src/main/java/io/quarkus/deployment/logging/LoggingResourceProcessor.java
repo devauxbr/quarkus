@@ -16,8 +16,12 @@
 
 package io.quarkus.deployment.logging;
 
+import static java.util.stream.Collectors.toList;
+
 import java.util.List;
+import java.util.Optional;
 import java.util.function.Consumer;
+import java.util.logging.Handler;
 import java.util.logging.Level;
 import java.util.stream.Collectors;
 
@@ -34,6 +38,7 @@ import io.quarkus.deployment.builditem.SystemPropertyBuildItem;
 import io.quarkus.deployment.builditem.substrate.RuntimeInitializedClassBuildItem;
 import io.quarkus.deployment.builditem.substrate.ServiceProviderBuildItem;
 import io.quarkus.deployment.builditem.substrate.SubstrateSystemPropertyBuildItem;
+import io.quarkus.runtime.RuntimeValue;
 import io.quarkus.runtime.logging.InitialConfigurator;
 import io.quarkus.runtime.logging.LevelConverter;
 import io.quarkus.runtime.logging.LogConfig;
@@ -93,8 +98,34 @@ public final class LoggingResourceProcessor {
 
     @BuildStep
     @Record(ExecutionTime.RUNTIME_INIT)
-    void setupLoggingRuntimeInit(LoggingSetupTemplate setupTemplate, LogConfig log) {
-        setupTemplate.initializeLogging(log);
+    void setupLoggingRuntimeContext(LoggingSetupTemplate setupTemplate, LogConfig log,
+            BuildProducer<HandlerContextBuildItem> handlerContextProducer) {
+        handlerContextProducer.produce(new HandlerContextBuildItem(setupTemplate.initializeLogContext(log)));
+    }
+
+    @BuildStep
+    @Record(ExecutionTime.RUNTIME_INIT)
+    void setupRuntimeLoggingConsoleHandler(LoggingSetupTemplate setupTemplate, LogConfig log,
+            HandlerContextBuildItem contextBuildItem, BuildProducer<HandlerBuildItem> handlerProducer) {
+        handlerProducer.produce(
+                new HandlerBuildItem(setupTemplate.initializeConsoleHandler(log, contextBuildItem.getHandlersContext())));
+    }
+
+    @BuildStep
+    @Record(ExecutionTime.RUNTIME_INIT)
+    void setupRuntimeLoggingFileHandler(LoggingSetupTemplate setupTemplate, LogConfig log,
+            HandlerContextBuildItem contextBuildItem, BuildProducer<HandlerBuildItem> handlerProducer) {
+        handlerProducer.produce(
+                new HandlerBuildItem(setupTemplate.initializeFileHandler(log, contextBuildItem.getHandlersContext())));
+    }
+
+    @BuildStep
+    @Record(ExecutionTime.RUNTIME_INIT)
+    void setupLoggingRuntimeHandlers(LoggingSetupTemplate setupTemplate, List<HandlerBuildItem> handlerBuildItems) {
+        List<RuntimeValue<Optional<Handler>>> handlers = handlerBuildItems.stream()
+                .map(HandlerBuildItem::getHandlerRuntimeValue)
+                .collect(toList());
+        setupTemplate.registerLoggingHandlers(handlers);
     }
 
     @BuildStep

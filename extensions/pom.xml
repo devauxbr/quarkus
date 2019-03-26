@@ -93,6 +93,9 @@
         <!-- Camel -->
         <module>camel</module>
 
+        <!-- Logging -->
+        <module>logstash</module>
+
         <!-- Additional languages -->
         <module>kotlin</module>
     </modules>
