@@ -26,7 +26,6 @@ import io.undertow.websockets.util.ObjectFactory;
 import io.undertow.websockets.util.ObjectHandle;
 import io.undertow.websockets.util.ObjectIntrospecter;
 import io.undertow.websockets.vertx.VertxServerWebSocketContainer;
-import io.undertow.websockets.vertx.VertxWebSocketHandler;
 import io.vertx.core.Handler;
 import io.vertx.ext.web.RoutingContext;
 
@@ -173,7 +172,7 @@ public class WebsocketRecorder {
             container.addEndpoint(i);
         }
         UndertowContainerProvider.setDefaultContainer(container);
-        return new VertxWebSocketHandler(container, info);
+        return new VertxWebSocketHandler(container, info, beanContainer);
     }
 
 }
